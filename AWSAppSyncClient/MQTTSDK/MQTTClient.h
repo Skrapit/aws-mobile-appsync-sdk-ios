@@ -82,9 +82,9 @@ typedef void(^MQTTExtendedNewMessageBlock)(NSObject *mqttClient, NSString *topic
  
  baseReconnectTime: the time in seconds to wait before the first reconnect attempt
  minimumConnectionTime: the time in seconds that a connection must be active before
-     resetting the current reconnection time to the base reconnection time
+ resetting the current reconnection time to the base reconnection time
  maximumReconnectTime: the maximum time in seconds to wait between reconnect
-     attempts
+ attempts
  
  The defaults for these values are:
  
@@ -105,6 +105,12 @@ typedef void(^MQTTExtendedNewMessageBlock)(NSObject *mqttClient, NSString *topic
  An optional associated object (nil by default).
  */
 @property(nonatomic, strong) NSObject *associatedObject;
+
+/**
+ proxy settings for the client
+ */
+@property(nonatomic, strong) NSDictionary *proxySettings;
+
 
 - (instancetype)initWithDelegate:(id<MQTTClientDelegate>)delegate;
 
@@ -129,11 +135,11 @@ typedef void(^MQTTExtendedNewMessageBlock)(NSObject *mqttClient, NSString *topic
 
 /**
  Subscribes to a topic at a specific QoS level
-
+ 
  @param topic The Topic to subscribe to.
-
+ 
  @param qos Specifies the QoS Level of the subscription. Can be 0, 1, or 2.
-
+ 
  @param callback Delegate Reference to MQTTNewMessageBlock. When new message is received the callback will be invoked.
  */
 - (void)subscribeToTopic:(NSString *)topic qos:(UInt8)qos
@@ -153,9 +159,9 @@ typedef void(^MQTTExtendedNewMessageBlock)(NSObject *mqttClient, NSString *topic
 
 /**
  Unsubscribes from a topic
-
+ 
  @param topic The Topic to unsubscribe from.
-
+ 
  */
 - (void)unsubscribeTopic:(NSString *)topic;
 

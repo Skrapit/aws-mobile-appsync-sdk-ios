@@ -14,6 +14,12 @@ class AppSyncMQTTClient: MQTTClientDelegate {
     var reachability: Reachability?
     var hostURL: String?
     var clientId: String?
+  var proxy: [AnyHashable: Any]? {
+    didSet {
+      self.mqttClient.proxySettings = proxy
+      _ = mqttClients.map({ $0.proxySettings = proxy })
+    }
+  }
     var topicSubscribersDictionary = [String: [MQTTSubscritionWatcher]]()
     var topicQueue = NSMutableSet()
     var initialConnection = true

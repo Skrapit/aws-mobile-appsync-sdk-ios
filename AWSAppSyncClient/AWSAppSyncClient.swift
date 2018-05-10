@@ -291,6 +291,7 @@ public class AWSAppSyncClient: NetworkConnectionNotification {
         reachability = Reachability(hostname: self.appSyncConfiguration.url.host!)
         self.autoSubmitOfflineMutations = self.appSyncConfiguration.autoSubmitOfflineMutations
         self.store = appSyncConfig.store
+      self.appSyncMQTTClient.proxy = self.appSyncConfiguration.urlSessionConfiguration.connectionProxyDictionary
         self.appSyncMQTTClient.allowCellularAccess = self.appSyncConfiguration.allowsCellularAccess
         self.presignedURLClient = appSyncConfig.presignedURLClient
         self.s3ObjectManager = appSyncConfig.s3ObjectManager

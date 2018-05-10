@@ -80,6 +80,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
         _session = nil;
         _clientId = nil;
         _associatedObject = nil;
+        _proxySettings = nil;
         _currentReconnectTime = 1;
         _baseReconnectTime = 1;
         _minimumConnectionTime = 20;
@@ -100,6 +101,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
         _session = nil;
         _clientId = nil;
         _associatedObject = nil;
+        _proxySettings = nil;
         _currentReconnectTime = 1;
         _baseReconnectTime = 1;
         _minimumConnectionTime = 20;
@@ -188,7 +190,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
         //
         return NO;
     }
-
+    
 }
 
 - (BOOL)webSocketConnectWithClientId:(NSString *)clientId
@@ -206,11 +208,11 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
     self.cleanSession = cleanSession;
     self.connectStatusCallback = callback;
     self.clientId = clientId;
-
+    
     if (self.cleanSession) {
         [self.topicListeners removeAllObjects];
     }
-
+    
     self.session = [[MQTTSession alloc] initWithClientId:clientId
                                                 userName:@""
                                                 password:@""
@@ -222,16 +224,17 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
                                           willRetainFlag:willRetainFlag
                                                  runLoop:theRunLoop
                                                  forMode:theRunLoopMode];
-
+    
     [self notifyConnectionStatus];
-
+    
     self.session.delegate = self;
     self.webSocket = [[AWSSRWebSocket alloc] initWithURLRequest:urlRequest
                                                       protocols:@[@"mqttv3.1"]
-                                 allowsUntrustedSSLCertificates:NO];
+                                 allowsUntrustedSSLCertificates:NO
+                                                  proxySettings:self.proxySettings];
     self.webSocket.delegate = self;
     [self.webSocket open];
-
+    
     //
     // Now that the WebSocket is created and opened, it will send us messages.
     //
@@ -241,7 +244,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
 
 - (void)disconnect {
     self.runLoopShouldContinue = NO; //Since we are calling disconnect, we should let runloopForStreamsThread to exit
-
+    
     self.userDisconnect = YES;
     [self.reconnectTimer invalidate];
     [self.encoderStream close];
@@ -249,7 +252,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
     [self.session close];
     self.session.delegate = nil;
     self.session = nil;
-
+    
     AWSDDLogInfo(@"MQTTClient: Disconnected");
 }
 
@@ -266,7 +269,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
     //
     [self.reconnectTimer invalidate];
     self.reconnectTimer = nil;
-
+    
     NSString *urlString = self.host;
     //
     // Connecting over a WebSocket with SigV4 authentication.  Close and deallocate
@@ -291,7 +294,8 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
     
     self.webSocket = [[AWSSRWebSocket alloc] initWithURLRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:urlString]]
                                                       protocols:@[@"mqttv3.1"]
-                                 allowsUntrustedSSLCertificates:NO];
+                                 allowsUntrustedSSLCertificates:NO
+                                                  proxySettings:self.proxySettings];
     self.webSocket.delegate = self;
     [self.webSocket open];
     
@@ -369,14 +373,14 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
 
 - (void)session:(MQTTSession*)session handleEvent:(MQTTSessionEvent)eventCode {
     AWSDDLogVerbose(@"MQTTSessionDelegate handleEvent: %i",eventCode);
-
+    
     switch (eventCode) {
         case MQTTSessionEventConnected:
             AWSDDLogInfo(@"MQTT session connected.");
             self.mqttStatus = MQTTStatusConnected;
             [self notifyConnectionStatus];
             self.connectionTimer = [NSTimer scheduledTimerWithTimeInterval:self.minimumConnectionTime target:self selector: @selector(markConnectionStable) userInfo: nil repeats:NO];
-
+            
             if (self.needReconnect) {
                 self.postConnectTimer = [NSTimer scheduledTimerWithTimeInterval:self.postConnectTime target: self selector: @selector(resubscribeToTopics) userInfo: nil repeats:NO];
             }
@@ -427,27 +431,27 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
         default:
             break;
     }
-
+    
 }
 
 - (void)session:(MQTTSession*)session newMessage:(NSData*)data onTopic:(NSString*)topic {
     AWSDDLogVerbose(@"MQTTSessionDelegate newMessage: %@ onTopic: %@",[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding], topic);
-
+    
     NSArray *topicParts = [topic componentsSeparatedByString: @"/"];
-
+    
     for (NSString *topicKey in self.topicListeners.allKeys) {
         NSArray *topicKeyParts = [topicKey componentsSeparatedByString: @"/"];
-
+        
         BOOL topicMatch = true;
         for (int i = 0; i < topicKeyParts.count; i++) {
             if (i >= topicParts.count) {
                 topicMatch = false;
                 break;
             }
-
+            
             NSString *topicPart = topicParts[i];
             NSString *topicKeyPart = topicKeyParts[i];
-
+            
             if ([topicKeyPart rangeOfString:@"#"].location == NSNotFound && [topicKeyPart rangeOfString:@"+"].location == NSNotFound) {
                 if (![topicPart isEqualToString:topicKeyPart]) {
                     topicMatch = false;
@@ -455,7 +459,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
                 }
             }
         }
-
+        
         if (topicMatch) {
             AWSDDLogInfo(@"Topic: %@ is matched.", topic);
             MQTTTopicModel *topicModel = [self.topicListeners objectForKey:topicKey];
@@ -486,9 +490,9 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
     self.encoderWriteStream = nil;
     self.decoderReadStream = nil;
     self.decoderWriteStream = nil;
-
+    
     self.runLoopShouldContinue = NO;
-
+    
     if (self.streamsThread != nil) {
         //If previous streamsThread is still running when we try to open a new one, wait until it exits.
         AWSDDLogWarn(@"streamsThread is still running. Waiting for it to exit.");
@@ -507,29 +511,29 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
     // since the MQTT client isn't capable of dealing with partial reads.
     //
     CFStreamCreateBoundPair( nil, &_decoderReadStream, &_decoderWriteStream, 128*1024 );    // 128KB buffer size
-
+    
     self.encoderStream     = [WebSocketOutputStreamFactory createWebSocketOutputStreamWithWebSocket:webSocket];
-
+    
     self.decoderStream = (__bridge_transfer NSInputStream *)_decoderReadStream;
     self.toDecoderStream     = (__bridge_transfer NSOutputStream *)_decoderWriteStream;
-
+    
     [self.toDecoderStream setDelegate:self];
-
+    
     self.streamsThread = [[NSThread alloc] initWithTarget:self selector:@selector(openStreams:) object:nil];
     [self.streamsThread start];
 }
 
 - (void)openStreams:(id)sender {
     NSRunLoop *runLoopForStreamsThread = [NSRunLoop currentRunLoop];
-
+    
     self.runLoopShouldContinue = YES;
-
+    
     [self.toDecoderStream scheduleInRunLoop:runLoopForStreamsThread forMode:NSDefaultRunLoopMode];
     [self.toDecoderStream open];
-
+    
     [self.session setRunLoop:runLoopForStreamsThread forMode:NSDefaultRunLoopMode];
     [self.session connectToInputStream:self.decoderStream outputStream:self.encoderStream];
-
+    
     while (self.runLoopShouldContinue) {
         //This will continue run until runLoopShouldContinue is set to NO during "disconnect" or
         //"websocketDidFail"
@@ -541,17 +545,17 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
 
 - (void)webSocket:(AWSSRWebSocket *)webSocket didFailWithError:(NSError *)error {
     AWSDDLogError(@":( Websocket Failed With Error %@", error);
-
+    
     //In case of unexpected websocket failure, we should exit the openStreams thread.
     self.runLoopShouldContinue = NO;
-
+    
     //
     // When the WebSocket fails, the connection is closed.  The MQTT client
     // can be deleted at this point.
     //
     [self.toDecoderStream close];
     [self.encoderStream   close];
-
+    
     self.webSocket = nil;
     self.encoderStream = nil;
     self.mqttStatus = MQTTStatusConnectionError;
@@ -580,14 +584,14 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
 - (void)webSocket:(AWSSRWebSocket *)webSocket didReceiveMessage:(id)message {
     if ([message isKindOfClass:[NSData class]]) {
         NSData *messageData = (NSData *)message;
-
+        
         AWSDDLogVerbose(@"Websocket didReceiveMessage: Received %lu bytes", (unsigned long)messageData.length);
         //
         // When a message is received, send it to the MQTT client's decoder
         // stream.
         //
         [self.toDecoderStream write:[messageData bytes] maxLength:messageData.length];
-
+        
     } else {
         AWSDDLogError(@"Invalid class received");
     }
@@ -606,7 +610,7 @@ static const int WAIT_TIMEOUT_IN_SEC = 3;
     //
     [self.toDecoderStream close];
     [self.encoderStream   close];
-
+    
     self.webSocket = nil;
     AWSDDLogInfo(@"WebSocket closed with code:%ld with reason:%@", (long)code, reason);
 }
